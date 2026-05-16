@@ -6,16 +6,16 @@
 <title>PayloadX — CubeSat in orbita</title>
 <style>
   :root { --bg:#070b14; --panel:#0e1626; --line:#1d2b44; --txt:#cdd6e6;
-          --muted:#7c8aa3; --acc:#e0894a; --ok:#3fd08a; --info:#5fa8e8; }
+          --muted:#7c8aa3; --acc:#e0894a; --info:#5fa8e8; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { background:var(--bg); color:var(--txt);
          font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   header { padding:18px 22px; border-bottom:1px solid var(--line); }
-  header h1 { font-size:19px; font-weight:600; letter-spacing:.3px; }
+  header h1 { font-size:19px; font-weight:600; }
   header p { font-size:13px; color:var(--muted); margin-top:3px; }
   .wrap { max-width:1100px; margin:0 auto; padding:18px 22px 40px; }
   .bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
-  button, .bar label { font-size:13px; }
+  button,.bar label { font-size:13px; }
   button { background:var(--panel); color:var(--txt); border:1px solid var(--line);
            padding:7px 13px; border-radius:8px; cursor:pointer; }
   button:hover { border-color:var(--acc); }
@@ -81,27 +81,46 @@
   var cam=new THREE.PerspectiveCamera(48,W/H,0.1,2000); cam.position.set(0,3.4,12);
   var R=new THREE.WebGLRenderer({antialias:true,alpha:true});
   R.setSize(W,H); R.setPixelRatio(Math.min(devicePixelRatio,2)); host.appendChild(R.domElement);
-  sc.add(new THREE.AmbientLight(0xffffff,0.42));
-  var sun=new THREE.DirectionalLight(0xffffff,1.15); sun.position.set(7,3,5); sc.add(sun);
+  sc.add(new THREE.AmbientLight(0xffffff,0.5));
+  var sun=new THREE.DirectionalLight(0xffffff,1.1); sun.position.set(7,3,5); sc.add(sun);
   var ER=3.2;
-  var earth=new THREE.Mesh(new THREE.SphereGeometry(ER,48,48),
-    new THREE.MeshPhongMaterial({color:0x245a96,emissive:0x081a30,shininess:14}));
+  var earthMat=new THREE.MeshPhongMaterial({color:0x245a96,emissive:0x081a30,shininess:14});
+  var earth=new THREE.Mesh(new THREE.SphereGeometry(ER,64,64),earthMat);
   sc.add(earth);
   var grid=new THREE.Mesh(new THREE.SphereGeometry(ER*1.002,24,18),
     new THREE.MeshBasicMaterial({color:0x3fa07a,wireframe:true,transparent:true,opacity:0.22}));
   sc.add(grid);
   sc.add(new THREE.Mesh(new THREE.SphereGeometry(ER*1.07,32,32),
     new THREE.MeshBasicMaterial({color:0x6db4ff,transparent:true,opacity:0.10,side:THREE.BackSide})));
+  var clouds=null;
+  var texSrc=["https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg",
+              "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"];
+  var cldSrc=["https://cdn.jsdelivr.net/npm/three-globe/example/img/clouds.png",
+              "https://unpkg.com/three-globe/example/img/clouds.png"];
+  function tryTex(list,i,ok){
+    if(i>=list.length) return;
+    var ld=new THREE.TextureLoader(); ld.setCrossOrigin("anonymous");
+    ld.load(list[i],function(tx){ok(tx);},undefined,function(){tryTex(list,i+1,ok);});
+  }
+  tryTex(texSrc,0,function(tx){
+    earthMat.map=tx; earthMat.color.setHex(0xffffff);
+    earthMat.emissive.setHex(0x000000); earthMat.needsUpdate=true; grid.visible=false;
+  });
+  tryTex(cldSrc,0,function(tx){
+    clouds=new THREE.Mesh(new THREE.SphereGeometry(ER*1.012,48,48),
+      new THREE.MeshPhongMaterial({map:tx,transparent:true,opacity:0.42,depthWrite:false}));
+    sc.add(clouds);
+  });
   function geo(lat,lon,r){var la=lat*Math.PI/180,lo=lon*Math.PI/180;
     return new THREE.Vector3(r*Math.cos(la)*Math.cos(lo),r*Math.sin(la),-r*Math.cos(la)*Math.sin(lo));}
-  var roma=new THREE.Mesh(new THREE.SphereGeometry(0.055,16,16),
+  var roma=new THREE.Mesh(new THREE.SphereGeometry(0.05,16,16),
     new THREE.MeshBasicMaterial({color:0xe0894a}));
   roma.position.copy(geo(41.9,12.5,ER*1.01)); sc.add(roma);
   var oR=ER*1.066, inc=51.6*Math.PI/180, pts=[];
   for(var i=0;i<=160;i++){var a=i/160*Math.PI*2;
     pts.push(new THREE.Vector3(Math.cos(a)*oR,Math.sin(a)*oR*Math.sin(inc),Math.sin(a)*oR*Math.cos(inc)));}
   sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({color:0xe0894a,transparent:true,opacity:0.5})));
+    new THREE.LineBasicMaterial({color:0xe0894a,transparent:true,opacity:0.55})));
   var sat=new THREE.Group();
   sat.add(new THREE.Mesh(new THREE.BoxGeometry(0.36,0.36,0.36),
     new THREE.MeshPhongMaterial({color:0xd2d4cf,shininess:45})));
@@ -133,13 +152,14 @@
       sat.position.set(x,y,z);
       sat.rotation.y+=0.012*spd; sat.rotation.x+=0.005*spd;
       earth.rotation.y+=0.0009*spd; grid.rotation.y+=0.0009*spd;
+      if(clouds) clouds.rotation.y+=0.0011*spd;
       roma.position.copy(geo(41.9,12.5-(earth.rotation.y*180/Math.PI),ER*1.01));
       var lat=Math.asin(y/oR)*180/Math.PI;
       var lng=(((Math.atan2(-z,x)*180/Math.PI)-(earth.rotation.y*180/Math.PI))%360+540)%360-180;
       var alt=Math.round(418+Math.sin(t*1.3)*6);
       var up=roma.position.clone().normalize();
-      var ts=sat.position.clone().sub(roma.position);
-      var el=90-(Math.acos(up.dot(ts.clone().normalize()))*180/Math.PI);
+      var tsv=sat.position.clone().sub(roma.position);
+      var el=90-(Math.acos(up.dot(tsv.clone().normalize()))*180/Math.PI);
       var vis=el>10;
       mLat.textContent=lat.toFixed(2)+'°';
       mLng.textContent=lng.toFixed(2)+'°';
