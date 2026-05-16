@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <Arduino.h>
+
 struct bmsData {
     bool ch1, ch2, ch3, ch4;
     float batV;

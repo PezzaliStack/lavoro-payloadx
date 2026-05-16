@@ -1,7 +1,18 @@
 // CubeSat v1 MCB Code Revision 1.0
 // =================================
 // ©Copyright 2023 EdgeFlyte, LLC.
-// All Rights Reserved. 
+// All Rights Reserved.
+//
+// =============================================================================
+// DEPRECATO in PayloadX (fork GPL v3) — codice EdgeFlyte non integrato.
+// Questo sketch NON viene compilato dalla toolchain ufficiale (PlatformIO,
+// vedi platformio.ini: src_dir = src) e i suoi file di supporto sono stati
+// rimossi (MCB/Madgwick.{h,cpp}: la fonte di verita' del filtro Madgwick e'
+// ora SOLO src/Madgwick.{h,cpp}). Per qualsiasi nuovo sviluppo di assetto:
+// modificare src/Madgwick e src/attitude. Questo file resta come riferimento
+// storico; tentare di compilarlo in Arduino IDE fallira' fintanto che le
+// dipendenze rimosse non vengono reintrodotte.
+// =============================================================================
 
 #include "Arduino.h"
 #include <assert.h>

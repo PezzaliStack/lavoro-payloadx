@@ -13,3 +13,4 @@ struct payloadData {
 void initPayload();
 void readPayload(payloadData &data);
 size_t buildBeacon(char *out, size_t outSize, const payloadData &p);
+const char *payloadBeaconId();

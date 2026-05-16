@@ -13,14 +13,26 @@ aerospaziale standard).
 
 ## Stato attuale
 
+- src/main.cpp: entry point reale (setup/loop, scheduler non bloccante
+  con millis(), modulo payload + beacon). E' l'unica fonte di verita'
+  per il firmware ed e' cio' che PlatformIO compila (src_dir = src).
 - src/imu.cpp, src/gps.cpp, src/radio.cpp: driver implementati
   (MPU-9250 SparkFun, Adafruit_GPS, NRF24 con pacchetto binario 28 byte).
 - src/payload.h, src/payload.cpp: modulo payload + beacon.
-- CubeSat.ino: entry point con scheduler non bloccante (millis()).
-- MCB/: codice della scheda di controllo principale con filtro Madgwick
-  (assetto), per ora NON integrato nel loop modulare di src/.
-- GS/: ground station (ATmega328PB) — non ancora aggiornata al nuovo
-  formato di pacchetto binario.
+- CubeSat.ino (alla root): solo marker documentale, NON compilato da
+  PlatformIO (sta fuori da src_dir). Non modificarlo aspettandosi
+  effetti sul firmware.
+- src/Madgwick.{h,cpp}: FONTE DI VERITA' UNICA del filtro Madgwick.
+  Esposto da src/attitude.{h,cpp}, che fonde gyro+accel+mag e produce
+  il quaternione (qw,qx,qy,qz).
+- MCB/: codice EdgeFlyte v1 originario, DEPRECATO. Non compilato dalla
+  toolchain ufficiale. MCB/Madgwick.{h,cpp} e' stato rimosso per
+  eliminare la duplicazione; ogni modifica al filtro va fatta in src/.
+- GS/: ground station (ATmega328PB) — decoder binario allineato a
+  src/radio.cpp (vedi docs/BUILD.md sez. 5.3 per i mismatch residui
+  di indirizzo/data-rate da risolvere prima di un test reale).
+- docs/BUILD.md: guida operativa (toolchain, pinout, layout dei
+  pacchetti, procedura HIL con due ESP32, vincoli legali RF).
 
 ## Vincoli (non negoziabili)
 

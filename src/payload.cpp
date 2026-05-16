@@ -28,6 +28,10 @@ void readPayload(payloadData &data) {
     data.valid    = true;
 }
 
+const char *payloadBeaconId() {
+    return BEACON_ID;
+}
+
 size_t buildBeacon(char *out, size_t outSize, const payloadData &p) {
     int n = snprintf(out, outSize, "%s,%lu,%.3f",
                      BEACON_ID,
