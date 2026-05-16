@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PayloadX — CubeSat in orbita</title>
+<style>
+  :root { --bg:#070b14; --panel:#0e1626; --line:#1d2b44; --txt:#cdd6e6;
+          --muted:#7c8aa3; --acc:#e0894a; --ok:#3fd08a; --info:#5fa8e8; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:18px 22px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:19px; font-weight:600; letter-spacing:.3px; }
+  header p { font-size:13px; color:var(--muted); margin-top:3px; }
+  .wrap { max-width:1100px; margin:0 auto; padding:18px 22px 40px; }
+  .bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  button, .bar label { font-size:13px; }
+  button { background:var(--panel); color:var(--txt); border:1px solid var(--line);
+           padding:7px 13px; border-radius:8px; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  input[type=range] { accent-color:var(--acc); }
+  #scene { width:100%; height:430px; border:1px solid var(--line); border-radius:14px;
+           background:#060912; overflow:hidden; position:relative; }
+  #hud { position:absolute; top:12px; left:14px; font-family:ui-monospace,monospace;
+         font-size:12px; color:var(--muted); line-height:1.7; }
+  #tag { position:absolute; top:12px; right:14px; font-family:ui-monospace,monospace;
+         font-size:12px; padding:4px 9px; border-radius:8px; background:#10314f;
+         color:var(--info); display:none; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+          gap:12px; margin-top:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+          padding:13px 15px; }
+  .card .k { font-size:12px; color:var(--muted); }
+  .card .v { font-size:20px; font-weight:600; font-family:ui-monospace,monospace; margin-top:3px; }
+  .rx { margin-top:14px; background:var(--panel); border:1px solid var(--line);
+        border-radius:12px; padding:14px 17px; }
+  .rx h2 { font-size:13px; font-weight:600; color:var(--info); margin-bottom:7px; }
+  #log { font-family:ui-monospace,monospace; font-size:12.5px; color:var(--muted);
+         line-height:2; min-height:84px; }
+  footer { text-align:center; font-size:12px; color:var(--muted);
+           padding:20px; border-top:1px solid var(--line); }
+  footer a { color:var(--info); text-decoration:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PayloadX — CubeSat in orbita</h1>
+  <p>Simulazione orbitale tipo ISS · inclinazione 51.6° · quota ~420 km · periodo ~92 min</p>
+</header>
+<div class="wrap">
+  <div class="bar">
+    <button id="play">⏸ Pausa</button>
+    <label>Velocità</label>
+    <input type="range" id="spd" min="1" max="30" value="10" step="1">
+    <span id="spdv" style="font-family:ui-monospace,monospace;font-size:13px;">10×</span>
+    <button id="view">Vista dal satellite</button>
+  </div>
+  <div id="scene"><div id="hud"></div><div id="tag">IN VISTA DA ROMA</div></div>
+  <div class="grid">
+    <div class="card"><div class="k">Latitudine</div><div class="v" id="mLat">—</div></div>
+    <div class="card"><div class="k">Longitudine</div><div class="v" id="mLng">—</div></div>
+    <div class="card"><div class="k">Quota</div><div class="v" id="mAlt">—</div></div>
+    <div class="card"><div class="k">Elevazione da Roma</div><div class="v" id="mEl">—</div></div>
+  </div>
+  <div class="rx">
+    <h2>Downlink PayloadX (decodificato a terra)</h2>
+    <div id="log"></div>
+  </div>
+</div>
+<footer>
+  PayloadX · fork GPL v3 di EdgeFlyte CubeSat v1 · sviluppato da PezzaliStack —
+  <a href="https://github.com/PezzaliStack/lavoro-payloadx">codice su GitHub</a>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var host=document.getElementById('scene');
+  var W=host.clientWidth,H=host.clientHeight;
+  var sc=new THREE.Scene();
+  var cam=new THREE.PerspectiveCamera(48,W/H,0.1,2000); cam.position.set(0,3.4,12);
+  var R=new THREE.WebGLRenderer({antialias:true,alpha:true});
+  R.setSize(W,H); R.setPixelRatio(Math.min(devicePixelRatio,2)); host.appendChild(R.domElement);
+  sc.add(new THREE.AmbientLight(0xffffff,0.42));
+  var sun=new THREE.DirectionalLight(0xffffff,1.15); sun.position.set(7,3,5); sc.add(sun);
+  var ER=3.2;
+  var earth=new THREE.Mesh(new THREE.SphereGeometry(ER,48,48),
+    new THREE.MeshPhongMaterial({color:0x245a96,emissive:0x081a30,shininess:14}));
+  sc.add(earth);
+  var grid=new THREE.Mesh(new THREE.SphereGeometry(ER*1.002,24,18),
+    new THREE.MeshBasicMaterial({color:0x3fa07a,wireframe:true,transparent:true,opacity:0.22}));
+  sc.add(grid);
+  sc.add(new THREE.Mesh(new THREE.SphereGeometry(ER*1.07,32,32),
+    new THREE.MeshBasicMaterial({color:0x6db4ff,transparent:true,opacity:0.10,side:THREE.BackSide})));
+  function geo(lat,lon,r){var la=lat*Math.PI/180,lo=lon*Math.PI/180;
+    return new THREE.Vector3(r*Math.cos(la)*Math.cos(lo),r*Math.sin(la),-r*Math.cos(la)*Math.sin(lo));}
+  var roma=new THREE.Mesh(new THREE.SphereGeometry(0.055,16,16),
+    new THREE.MeshBasicMaterial({color:0xe0894a}));
+  roma.position.copy(geo(41.9,12.5,ER*1.01)); sc.add(roma);
+  var oR=ER*1.066, inc=51.6*Math.PI/180, pts=[];
+  for(var i=0;i<=160;i++){var a=i/160*Math.PI*2;
+    pts.push(new THREE.Vector3(Math.cos(a)*oR,Math.sin(a)*oR*Math.sin(inc),Math.sin(a)*oR*Math.cos(inc)));}
+  sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:0xe0894a,transparent:true,opacity:0.5})));
+  var sat=new THREE.Group();
+  sat.add(new THREE.Mesh(new THREE.BoxGeometry(0.36,0.36,0.36),
+    new THREE.MeshPhongMaterial({color:0xd2d4cf,shininess:45})));
+  var pm=new THREE.MeshPhongMaterial({color:0x185fa5,emissive:0x04254a,shininess:60,side:THREE.DoubleSide});
+  var a1=new THREE.Mesh(new THREE.BoxGeometry(0.82,0.02,0.36),pm); a1.position.x=-0.6; sat.add(a1);
+  var a2=new THREE.Mesh(new THREE.BoxGeometry(0.82,0.02,0.36),pm); a2.position.x=0.6; sat.add(a2);
+  sc.add(sat);
+  var gtMax=240,gtA=new Float32Array(gtMax*3),gtN=0;
+  var gtG=new THREE.BufferGeometry(); gtG.setAttribute('position',new THREE.BufferAttribute(gtA,3));
+  sc.add(new THREE.Line(gtG,new THREE.LineBasicMaterial({color:0xffd27a,transparent:true,opacity:0.6})));
+  var bG=new THREE.BufferGeometry(); bG.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3));
+  var beam=new THREE.Line(bG,new THREE.LineBasicMaterial({color:0x3fd08a})); sc.add(beam);
+  var stg=new THREE.BufferGeometry(),sv=[];
+  for(var s=0;s<500;s++){var r=60+Math.random()*40,tt=Math.random()*6.28,pp=Math.acos(2*Math.random()-1);
+    sv.push(r*Math.sin(pp)*Math.cos(tt),r*Math.sin(pp)*Math.sin(tt),r*Math.cos(pp));}
+  stg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
+  sc.add(new THREE.Points(stg,new THREE.PointsMaterial({color:0xffffff,size:0.16,transparent:true,opacity:0.6})));
+  var t=0,play=true,spd=10,fol=false,seq=0,lastB=0,lines=[],lk=-1;
+  var hud=document.getElementById('hud'),tag=document.getElementById('tag'),log=document.getElementById('log');
+  var mLat=document.getElementById('mLat'),mLng=document.getElementById('mLng'),
+      mAlt=document.getElementById('mAlt'),mEl=document.getElementById('mEl');
+  document.getElementById('play').onclick=function(){play=!play;this.textContent=play?'⏸ Pausa':'▶ Riprendi';};
+  document.getElementById('spd').oninput=function(){spd=+this.value;document.getElementById('spdv').textContent=spd+'×';};
+  document.getElementById('view').onclick=function(){fol=!fol;this.textContent=fol?'Vista globale':'Vista dal satellite';};
+  function loop(){
+    if(play){
+      t+=0.0014*spd; var a=t;
+      var x=Math.cos(a)*oR,y=Math.sin(a)*oR*Math.sin(inc),z=Math.sin(a)*oR*Math.cos(inc);
+      sat.position.set(x,y,z);
+      sat.rotation.y+=0.012*spd; sat.rotation.x+=0.005*spd;
+      earth.rotation.y+=0.0009*spd; grid.rotation.y+=0.0009*spd;
+      roma.position.copy(geo(41.9,12.5-(earth.rotation.y*180/Math.PI),ER*1.01));
+      var lat=Math.asin(y/oR)*180/Math.PI;
+      var lng=(((Math.atan2(-z,x)*180/Math.PI)-(earth.rotation.y*180/Math.PI))%360+540)%360-180;
+      var alt=Math.round(418+Math.sin(t*1.3)*6);
+      var up=roma.position.clone().normalize();
+      var ts=sat.position.clone().sub(roma.position);
+      var el=90-(Math.acos(up.dot(ts.clone().normalize()))*180/Math.PI);
+      var vis=el>10;
+      mLat.textContent=lat.toFixed(2)+'°';
+      mLng.textContent=lng.toFixed(2)+'°';
+      mAlt.textContent=alt+' km';
+      mEl.textContent=(el>0?el.toFixed(0)+'°':'—');
+      hud.innerHTML='ORBITA tipo ISS<br>incl 51.6° · h≈420 km<br>periodo ~92 min (sim '+spd+'×)';
+      var gp=geo(lat,lng+(earth.rotation.y*180/Math.PI),ER*1.012);
+      if(gtN<gtMax){gtA.set([gp.x,gp.y,gp.z],gtN*3);gtN++;}
+      else{gtA.copyWithin(0,3);gtA.set([gp.x,gp.y,gp.z],(gtMax-1)*3);}
+      gtG.setAttribute('position',new THREE.BufferAttribute(gtA.slice(0,gtN*3),3));
+      tag.style.display=vis?'block':'none';
+      if(vis){
+        beam.visible=true;
+        beam.geometry.attributes.position.array.set([
+          roma.position.x,roma.position.y,roma.position.z,
+          sat.position.x,sat.position.y,sat.position.z]);
+        beam.geometry.attributes.position.needsUpdate=true;
+        if(Math.floor(t*8)!==lk){
+          lk=Math.floor(t*8); seq++;
+          if(Math.random()<0.05) lines.unshift('  [!!] CRC errato -> scartato');
+          else if(Math.random()<0.5) lines.unshift('  [T] seq='+seq+' lat='+lat.toFixed(2)+' lng='+lng.toFixed(2)+' alt='+alt+'km');
+          else lines.unshift('  [R] seq='+seq+' accel(mg)=('+(20+seq%30)+','+(10+seq%20)+',1012)');
+          if(t-lastB>1.4){lastB=t;lines.unshift('  [B] BEACON id=PAYLOADX-1 misura#'+seq+' val='+(1.2+Math.random()*0.9).toFixed(3));}
+          if(lines.length>5) lines.pop();
+          log.innerHTML=lines.join('<br>');
+        }
+      } else {
+        beam.visible=false;
+        if(seq>0 && log.innerHTML.indexOf('fuori portata')<0)
+          log.innerHTML='  [..] satellite sotto l\'orizzonte (fuori portata da Roma)<br>'+lines.slice(0,3).join('<br>');
+      }
+    }
+    cam.position.lerp(fol?new THREE.Vector3(sat.position.x*1.45,sat.position.y*1.45+0.8,sat.position.z*1.45)
+                          :new THREE.Vector3(0,3.4,12),0.04);
+    cam.lookAt(0,0,0);
+    R.render(sc,cam);
+    requestAnimationFrame(loop);
+  }
+  loop();
+  addEventListener('resize',function(){
+    W=host.clientWidth;H=host.clientHeight;cam.aspect=W/H;cam.updateProjectionMatrix();R.setSize(W,H);
+  });
+})();
+</script>
+</body>
+</html>
