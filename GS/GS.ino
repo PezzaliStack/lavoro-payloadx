@@ -44,9 +44,17 @@ uint64_t errPackets = 0;
 
 uint8_t radioChannel = 62;
 uint8_t radioPowerLevel = RF24_PA_LOW;
-uint8_t radioDataRate = RF24_1MBPS;
+// PayloadX: data rate ALLINEATO al TX in src/radio.cpp (RF24_250KBPS).
+// Era RF24_1MBPS nel codice EdgeFlyte v2, ma TX e RX devono usare
+// LO STESSO data rate o nessun pacchetto viene riconosciuto.
+uint8_t radioDataRate = RF24_250KBPS;
 
-uint8_t address[6] = {"EFEF0"};
+// PayloadX: indirizzo del pipe ALLINEATO al TX in src/radio.cpp
+// (radio.openWritingPipe(0xE8E8F0F0E1LL)). Il vecchio "EFEF0" appartiene
+// al protocollo ASCII pre-binarizzazione e veniva mantenuto per inerzia.
+// La forma uint64_t corrisponde, come bytes-on-wire, a 0xE1 0xF0 0xF0
+// 0xE8 0xE8 (RF24 trasmette LSB first).
+static const uint64_t PIPE_ADDRESS = 0xE8E8F0F0E1ULL;
 
 // Stampa CSV beacon: B,id,count,value
 static void printBeacon(const BeaconPacket &pkt) {
@@ -133,8 +141,8 @@ void setup() {
   // PayloadX: dimensione fissa allineata al TX dell'ESP32
   // (src/radio.cpp -> radio.setPayloadSize(sizeof(TelemetryPacket))).
   radio.setPayloadSize(sizeof(TelemetryPacket));
-  radio.openWritingPipe(address);
-  radio.openReadingPipe(1, address);
+  radio.openWritingPipe(PIPE_ADDRESS);
+  radio.openReadingPipe(1, PIPE_ADDRESS);
   radio.setDataRate(radioDataRate);
   radio.startListening();
   digitalWrite(2, 1);

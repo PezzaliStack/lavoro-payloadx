@@ -236,21 +236,25 @@ ATmega328PB reale per testare la catena radio + parsing.
      molto probabile mismatch di indirizzo / payload size / endianness
      (su due chip little-endian non dovrebbe mai capitare).
 
-### 5.3 Known issues / configuration drift
+### 5.3 Configurazione radio: allineamento TX/RX
 
-Differenze pre-esistenti tra `src/radio.cpp` (TX ESP32) e `GS/GS.ino`
-(RX ATmega328PB ufficiale) che impediscono la catena radio di funzionare
-con i default:
+Le tre impostazioni che DEVONO combaciare bit-per-bit tra TX
+(`src/radio.cpp`) e RX (`GS/GS.ino` o lo sketch di Appendice A),
+altrimenti l'NRF24 scarta i pacchetti silenziosamente a livello PHY
+e non arriva nulla all'applicazione:
 
-- **Indirizzo del pipe**: TX usa `0xE8E8F0F0E1LL`, la GS ufficiale usa
-  `"EFEF0"` (5 byte ASCII). Da allineare prima di un test reale.
-- **Data rate**: TX `RF24_250KBPS`, GS `RF24_1MBPS`.
+| Parametro       | Valore                  | Dove si setta                    |
+|-----------------|-------------------------|----------------------------------|
+| Channel         | 62 (2.462 GHz)          | `setChannel(62)`                 |
+| Data rate       | 250 kbps                | `setDataRate(RF24_250KBPS)`      |
+| Payload size    | `sizeof(TelemetryPacket)` (27 B) | `setPayloadSize(...)`   |
+| Pipe address    | `0xE8E8F0F0E1`          | `openWritingPipe/openReadingPipe`|
 
-Questi mismatch sono **fuori scope** dei commit di obiettivi 1-4 (che
-hanno trattato solo il formato di pacchetto e il dispatch) e vanno
-risolti in un commit dedicato. Lo sketch ricevitore di Appendice A
-usa i valori corretti (allineati al TX), quindi il bench HIL con due
-ESP32 funziona out-of-the-box.
+Storia: nel codice EdgeFlyte v2 originale di `GS/GS.ino` il data rate
+era `RF24_1MBPS` e l'indirizzo del pipe era `"EFEF0"` (5 byte ASCII).
+Erano residui del protocollo ASCII pre-binarizzazione. Allineati al TX
+nel commit dedicato che ha seguito la stesura di questo documento; lo
+sketch di Appendice A nasce gia' allineato.
 
 ---
 
