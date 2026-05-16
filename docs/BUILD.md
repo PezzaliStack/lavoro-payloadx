@@ -282,68 +282,45 @@ stesso promemoria (vincolo 3 di CLAUDE.md).
 ## Appendice A — Sketch ricevitore ESP32 per HIL test
 
 Sketch minimale, da caricare sulla seconda ESP32 nel test di sezione 5.
-Non shippa nel repo: viva qui finche' non emerge l'esigenza di una
-cartella `tools/`. Mantenere i `struct` allineati con `src/radio.cpp`.
+**Non duplica il layout dei pacchetti**: include `src/packet_format.h`
+(fonte di verita' unica del protocollo) come fa `GS/GS.ino`. Cosi' se
+il protocollo cambia, basta cambiare il file in `src/` e la GS bench
+rimane allineata gratis — niente piu' tre copie speculari.
+
+Dove mettere il file dipende dalla toolchain:
+
+- **Arduino IDE**: crea una cartella sketch (es. `tools/esp32_gs/`)
+  dentro al repo e salva li' `esp32_gs.ino`. Il path
+  `#include "../../src/packet_format.h"` raggiunge l'header dal sketch.
+- **Bench fuori repo**: copia `src/packet_format.h` accanto allo
+  sketch e includi `"packet_format.h"`. Diventa un'altra copia da
+  tenere allineata: meglio tenere lo sketch in-repo.
+- **PlatformIO env dedicato** (opzionale, robusto): aggiungere a
+  `platformio.ini`
+  ```
+  [env:esp32_gs]
+  platform = espressif32
+  board = esp32dev
+  framework = arduino
+  build_src_filter = -<*> +<../tools/esp32_gs/>
+  build_flags = -I src
+  ```
+  e includere semplicemente `"packet_format.h"`.
 
 ```cpp
 // esp32_gs.ino — ricevitore minimale per HIL test con PayloadX TX.
-// Stampa CSV su Serial a 115200. Layout speculare a src/radio.cpp.
+// Stampa CSV su Serial a 115200. Layout e CRC vengono dall'header
+// condiviso: niente ridichiarazione locale, niente deriva.
 
 #include <SPI.h>
 #include <RF24.h>
 #include <string.h>
+#include "../../src/packet_format.h"   // adattare il path al setup scelto
 
 #define CE_PIN  4    // adattare ai pin disponibili sulla dev-board
 #define CSN_PIN 5
 
 RF24 radio(CE_PIN, CSN_PIN);
-
-#pragma pack(push, 1)
-struct TelemetryPacket {
-    uint8_t  magic;
-    uint16_t seq;
-    int32_t  lat_1e7;
-    int32_t  lng_1e7;
-    int32_t  alt_cm;
-    int16_t  qw_i16;
-    int16_t  qx_i16;
-    int16_t  qy_i16;
-    int16_t  qz_i16;
-    uint8_t  sats;
-    uint8_t  flags;
-    uint16_t crc;
-};
-struct RawImuPacket {
-    uint8_t  magic;
-    uint16_t seq;
-    int16_t  ax_mg, ay_mg, az_mg;
-    int16_t  gx_dps10, gy_dps10, gz_dps10;
-    int16_t  mx_uT, my_uT, mz_uT;
-    uint32_t reserved;
-    uint16_t crc;
-};
-struct BeaconPacket {
-    uint8_t  magic;
-    uint32_t expCount;
-    float    expValue;
-    char     id[16];
-    uint16_t crc;
-};
-#pragma pack(pop)
-
-static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;
-static const uint8_t PKT_MAGIC_RAW_IMU   = 0x52;
-static const uint8_t PKT_MAGIC_BEACON    = 0x42;
-
-static uint16_t crc16(const uint8_t *buf, size_t len) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)buf[i] << 8;
-        for (uint8_t b = 0; b < 8; b++)
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
-    }
-    return crc;
-}
 
 void setup() {
     Serial.begin(115200);
@@ -367,7 +344,7 @@ void loop() {
     switch (buf[0]) {
         case PKT_MAGIC_TELEMETRY: {
             TelemetryPacket p; memcpy(&p, buf, sizeof(p));
-            if (crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,T"); break; }
+            if (pkt_crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,T"); break; }
             Serial.print("T,"); Serial.print(p.seq); Serial.print(',');
             Serial.print(p.lat_1e7 / 1.0e7, 7); Serial.print(',');
             Serial.print(p.lng_1e7 / 1.0e7, 7); Serial.print(',');
@@ -382,7 +359,7 @@ void loop() {
         }
         case PKT_MAGIC_RAW_IMU: {
             RawImuPacket p; memcpy(&p, buf, sizeof(p));
-            if (crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,R"); break; }
+            if (pkt_crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,R"); break; }
             Serial.print("R,"); Serial.print(p.seq); Serial.print(',');
             Serial.print(p.ax_mg / 1000.0f, 3); Serial.print(',');
             Serial.print(p.ay_mg / 1000.0f, 3); Serial.print(',');
@@ -397,7 +374,7 @@ void loop() {
         }
         case PKT_MAGIC_BEACON: {
             BeaconPacket p; memcpy(&p, buf, sizeof(p));
-            if (crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,B"); break; }
+            if (pkt_crc16(buf, sizeof(p) - 2) != p.crc) { Serial.println("%%E,CRC,B"); break; }
             p.id[sizeof(p.id) - 1] = '\0';
             Serial.print("B,"); Serial.print(p.id); Serial.print(',');
             Serial.print(p.expCount); Serial.print(',');

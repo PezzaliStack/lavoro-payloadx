@@ -14,14 +14,22 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // PayloadX (fork GPL v3) — modifiche aggiunte:
-//   - Decoder del pacchetto binario TelemetryPacket emesso da src/radio.cpp
-//     (magic 0x54, seq, lat/lng 1e7, alt cm, accel mg, sats, flags, CRC-16).
+//   - Decoder dei pacchetti binari emessi da src/radio.cpp (Telemetry,
+//     RawImu, Beacon). Layout e CRC NON sono piu' ridichiarati qui:
+//     vengono dalla fonte di verita' unica ../src/packet_format.h.
 //   - Le sole sezioni con commenti in italiano (e questo blocco) sono coperte
 //     da GPL v3; il resto della GS resta sotto la licenza EdgeFlyte sopra.
 
 #include <SPI.h>
 #include "printf.h"
 #include "RF24.h"
+
+// Layout e magic byte dei pacchetti vivono in src/packet_format.h.
+// Il path relativo funziona perche' il preprocessore C risolve il "..."
+// rispetto al file che fa l'include (gcc / avr-gcc / arduino-builder).
+// Se in futuro questo non bastasse per Arduino IDE su Windows, valutare
+// un PlatformIO env dedicato alla GS con build_flags = -I ../src.
+#include "../src/packet_format.h"
 
 #define CE_PIN 7
 #define CSN_PIN 8
@@ -39,70 +47,6 @@ uint8_t radioPowerLevel = RF24_PA_LOW;
 uint8_t radioDataRate = RF24_1MBPS;
 
 uint8_t address[6] = {"EFEF0"};
-
-// --- PayloadX: definizione SPECULARE del pacchetto telemetria -------------
-// Deve restare bit-per-bit identica a quella in src/radio.cpp sull'ESP32.
-// #pragma pack(1) garantisce zero padding tra i campi.
-#pragma pack(push, 1)
-struct TelemetryPacket {
-    uint8_t  magic;
-    uint16_t seq;
-    int32_t  lat_1e7;
-    int32_t  lng_1e7;
-    int32_t  alt_cm;
-    int16_t  qw_i16;     // quaternione * 32767
-    int16_t  qx_i16;
-    int16_t  qy_i16;
-    int16_t  qz_i16;
-    uint8_t  sats;
-    uint8_t  flags;
-    uint16_t crc;
-};
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-struct BeaconPacket {
-    uint8_t  magic;        // 0x42 'B'
-    uint32_t expCount;
-    float    expValue;
-    char     id[16];
-    uint16_t crc;
-};
-#pragma pack(pop)
-
-#pragma pack(push, 1)
-struct RawImuPacket {
-    uint8_t  magic;        // 0x52 'R'
-    uint16_t seq;
-    int16_t  ax_mg;
-    int16_t  ay_mg;
-    int16_t  az_mg;
-    int16_t  gx_dps10;
-    int16_t  gy_dps10;
-    int16_t  gz_dps10;
-    int16_t  mx_uT;
-    int16_t  my_uT;
-    int16_t  mz_uT;
-    uint32_t reserved;
-    uint16_t crc;
-};
-#pragma pack(pop)
-
-static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;
-static const uint8_t PKT_MAGIC_BEACON    = 0x42;
-static const uint8_t PKT_MAGIC_RAW_IMU   = 0x52;
-
-// CRC-16 con polinomio 0x1021, init 0xFFFF (uguale a src/radio.cpp).
-// Calcolato sui byte del pacchetto ESCLUSO il campo crc finale.
-static uint16_t crc16(const uint8_t *buf, size_t len) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)buf[i] << 8;
-        for (uint8_t b = 0; b < 8; b++)
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
-    }
-    return crc;
-}
 
 // Stampa CSV beacon: B,id,count,value
 static void printBeacon(const BeaconPacket &pkt) {
@@ -216,8 +160,8 @@ void loop() {
     if (magic == PKT_MAGIC_TELEMETRY) {
       TelemetryPacket pkt;
       memcpy(&pkt, buf, sizeof(pkt));
-      uint16_t expected = crc16((const uint8_t *)&pkt,
-                                sizeof(pkt) - sizeof(pkt.crc));
+      uint16_t expected = pkt_crc16((const uint8_t *)&pkt,
+                                    sizeof(pkt) - sizeof(pkt.crc));
       if (expected != pkt.crc) {
         errPackets++;
         Serial.println(F("%%E,CRC,T"));
@@ -228,8 +172,8 @@ void loop() {
     } else if (magic == PKT_MAGIC_BEACON) {
       BeaconPacket pkt;
       memcpy(&pkt, buf, sizeof(pkt));
-      uint16_t expected = crc16((const uint8_t *)&pkt,
-                                sizeof(pkt) - sizeof(pkt.crc));
+      uint16_t expected = pkt_crc16((const uint8_t *)&pkt,
+                                    sizeof(pkt) - sizeof(pkt.crc));
       if (expected != pkt.crc) {
         errPackets++;
         Serial.println(F("%%E,CRC,B"));
@@ -243,8 +187,8 @@ void loop() {
     } else if (magic == PKT_MAGIC_RAW_IMU) {
       RawImuPacket pkt;
       memcpy(&pkt, buf, sizeof(pkt));
-      uint16_t expected = crc16((const uint8_t *)&pkt,
-                                sizeof(pkt) - sizeof(pkt.crc));
+      uint16_t expected = pkt_crc16((const uint8_t *)&pkt,
+                                    sizeof(pkt) - sizeof(pkt.crc));
       if (expected != pkt.crc) {
         errPackets++;
         Serial.println(F("%%E,CRC,R"));
