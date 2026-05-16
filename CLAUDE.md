@@ -28,8 +28,11 @@ aerospaziale standard).
 - MCB/: codice EdgeFlyte v1 originario, DEPRECATO. Non compilato dalla
   toolchain ufficiale. MCB/Madgwick.{h,cpp} e' stato rimosso per
   eliminare la duplicazione; ogni modifica al filtro va fatta in src/.
-- GS/: ground station (ATmega328PB) — non ancora aggiornata al nuovo
-  formato di pacchetto binario.
+- GS/: ground station (ATmega328PB) — decoder binario allineato a
+  src/radio.cpp (vedi docs/BUILD.md sez. 5.3 per i mismatch residui
+  di indirizzo/data-rate da risolvere prima di un test reale).
+- docs/BUILD.md: guida operativa (toolchain, pinout, layout dei
+  pacchetti, procedura HIL con due ESP32, vincoli legali RF).
 
 ## Vincoli (non negoziabili)
 
