@@ -17,10 +17,11 @@
 #define CSN_PIN 8
 static RF24 radio(CE_PIN, CSN_PIN);
 
-// Byte di magic per i due tipi di pacchetto sullo stesso indirizzo NRF24.
+// Byte di magic per i tipi di pacchetto sullo stesso indirizzo NRF24.
 // La GS dispatcha leggendo il primo byte.
 static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;  // 'T'
 static const uint8_t PKT_MAGIC_BEACON    = 0x42;  // 'B'
+static const uint8_t PKT_MAGIC_RAW_IMU   = 0x52;  // 'R'
 
 #pragma pack(push, 1)
 struct TelemetryPacket {
@@ -52,12 +53,37 @@ struct BeaconPacket {
 };
 #pragma pack(pop)
 
+// Pacchetto IMU grezzo: complementare a TelemetryPacket. Il quaternione
+// e' la stima fusa di assetto; qui invece passano i valori a monte del
+// filtro Madgwick (accel, gyro, mag) per debug, validazione e analisi
+// post-volo. Stessa size (27 B) per coesistere su fixed-payload NRF24.
+#pragma pack(push, 1)
+struct RawImuPacket {
+    uint8_t  magic;        // 0x52 'R'
+    uint16_t seq;
+    int16_t  ax_mg;        // accel mg (1 LSB = 1 mg)
+    int16_t  ay_mg;
+    int16_t  az_mg;
+    int16_t  gx_dps10;     // gyro deg/s * 10 (1 LSB = 0.1 dps, range +-3276.7 dps)
+    int16_t  gy_dps10;
+    int16_t  gz_dps10;
+    int16_t  mx_uT;        // mag uT (1 LSB = 1 uT)
+    int16_t  my_uT;
+    int16_t  mz_uT;
+    uint32_t reserved;     // 4 byte di riserva (futuro: temp, status)
+    uint16_t crc;
+};
+#pragma pack(pop)
+
 static_assert(sizeof(TelemetryPacket) <= 32,
               "Il pacchetto deve stare nei 32 byte del payload NRF24");
 static_assert(sizeof(BeaconPacket) == sizeof(TelemetryPacket),
               "Beacon e Telemetry devono avere la stessa size (fixed-payload NRF24)");
+static_assert(sizeof(RawImuPacket) == sizeof(TelemetryPacket),
+              "RawImu e Telemetry devono avere la stessa size (fixed-payload NRF24)");
 
-static uint16_t seqCounter = 0;
+static uint16_t seqCounter    = 0;
+static uint16_t seqCounterRaw = 0;
 
 static uint16_t crc16(const uint8_t *buf, size_t len) {
     uint16_t crc = 0xFFFF;
@@ -79,6 +105,15 @@ static int16_t quatToI16(float q) {
     return (int16_t)v;
 }
 
+// Saturazione generica float -> int16 (per accel/gyro/mag): un fondo scala
+// troppo aggressivo o un sensore in errore potrebbe produrre valori fuori
+// range, e (int16_t)cast su un float fuori range e' undefined behavior.
+static int16_t toI16Sat(float v) {
+    if (v >  32767.0f) return  32767;
+    if (v < -32768.0f) return -32768;
+    return (int16_t)v;
+}
+
 void initRadio() {
     if (!radio.begin()) {
         Serial.println(F("[RADIO] NRF24 non rilevato"));
@@ -95,8 +130,8 @@ void initRadio() {
 }
 
 void sendTelemetry(const gpsData &gps, const sensorData &imu, const attitudeData &att) {
-    (void)imu;  // accel/gyro/mag cruda non e' piu' in pacchetto, ma teniamo
-                // il parametro per estensioni future (es. g-load di backup).
+    (void)imu;  // i valori IMU grezzi viaggiano nel proprio pacchetto
+                // (sendRawImu / magic 'R'); qui resta solo l'attitudine.
     TelemetryPacket pkt;
     pkt.magic   = PKT_MAGIC_TELEMETRY;
     pkt.seq     = seqCounter++;
@@ -113,6 +148,29 @@ void sendTelemetry(const gpsData &gps, const sensorData &imu, const attitudeData
     bool ok = radio.write(&pkt, sizeof(pkt));
     if (!ok) {
         Serial.println(F("[RADIO] TX fallita (nessun ACK)"));
+    }
+}
+
+// Pacchetto IMU grezzo via NRF24. Stessa cadenza della telemetria (1 Hz).
+// Scale: accel in mg, gyro in 0.1 deg/s, mag in uT (vedi RawImuPacket).
+void sendRawImu(const sensorData &imu) {
+    RawImuPacket pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    pkt.magic    = PKT_MAGIC_RAW_IMU;
+    pkt.seq      = seqCounterRaw++;
+    pkt.ax_mg    = toI16Sat(imu.ax * 1000.0f);
+    pkt.ay_mg    = toI16Sat(imu.ay * 1000.0f);
+    pkt.az_mg    = toI16Sat(imu.az * 1000.0f);
+    pkt.gx_dps10 = toI16Sat(imu.gx * 10.0f);
+    pkt.gy_dps10 = toI16Sat(imu.gy * 10.0f);
+    pkt.gz_dps10 = toI16Sat(imu.gz * 10.0f);
+    pkt.mx_uT    = toI16Sat(imu.mx);
+    pkt.my_uT    = toI16Sat(imu.my);
+    pkt.mz_uT    = toI16Sat(imu.mz);
+    pkt.crc      = crc16((uint8_t *)&pkt, sizeof(pkt) - sizeof(pkt.crc));
+    bool ok = radio.write(&pkt, sizeof(pkt));
+    if (!ok) {
+        Serial.println(F("[RADIO] raw IMU TX fallita (nessun ACK)"));
     }
 }
 

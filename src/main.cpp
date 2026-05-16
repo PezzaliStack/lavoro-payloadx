@@ -52,6 +52,7 @@ void loop() {
     if (now - lastTelem >= T_TELEMETRY) {
         lastTelem = now;
         sendTelemetry(gps, imu, att);
+        sendRawImu(imu);
     }
 
     if (now - lastBeacon >= T_BEACON) {

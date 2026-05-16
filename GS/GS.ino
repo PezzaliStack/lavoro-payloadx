@@ -70,8 +70,27 @@ struct BeaconPacket {
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+struct RawImuPacket {
+    uint8_t  magic;        // 0x52 'R'
+    uint16_t seq;
+    int16_t  ax_mg;
+    int16_t  ay_mg;
+    int16_t  az_mg;
+    int16_t  gx_dps10;
+    int16_t  gy_dps10;
+    int16_t  gz_dps10;
+    int16_t  mx_uT;
+    int16_t  my_uT;
+    int16_t  mz_uT;
+    uint32_t reserved;
+    uint16_t crc;
+};
+#pragma pack(pop)
+
 static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;
 static const uint8_t PKT_MAGIC_BEACON    = 0x42;
+static const uint8_t PKT_MAGIC_RAW_IMU   = 0x52;
 
 // CRC-16 con polinomio 0x1021, init 0xFFFF (uguale a src/radio.cpp).
 // Calcolato sui byte del pacchetto ESCLUSO il campo crc finale.
@@ -93,6 +112,30 @@ static void printBeacon(const BeaconPacket &pkt) {
     Serial.print(pkt.expCount);
     Serial.print(',');
     Serial.println(pkt.expValue, 3);
+}
+
+// Stampa CSV raw IMU: R,seq,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps,mx_uT,my_uT,mz_uT
+static void printRawImu(const RawImuPacket &pkt) {
+    Serial.print(F("R,"));
+    Serial.print(pkt.seq);
+    Serial.print(',');
+    Serial.print(pkt.ax_mg / 1000.0f, 3);
+    Serial.print(',');
+    Serial.print(pkt.ay_mg / 1000.0f, 3);
+    Serial.print(',');
+    Serial.print(pkt.az_mg / 1000.0f, 3);
+    Serial.print(',');
+    Serial.print(pkt.gx_dps10 / 10.0f, 1);
+    Serial.print(',');
+    Serial.print(pkt.gy_dps10 / 10.0f, 1);
+    Serial.print(',');
+    Serial.print(pkt.gz_dps10 / 10.0f, 1);
+    Serial.print(',');
+    Serial.print(pkt.mx_uT);
+    Serial.print(',');
+    Serial.print(pkt.my_uT);
+    Serial.print(',');
+    Serial.println(pkt.mz_uT);
 }
 
 // Stampa una riga CSV per il client a valle (es. logger su PC).
@@ -196,6 +239,18 @@ void loop() {
         // di azzerare l'ultimo byte di id.
         pkt.id[sizeof(pkt.id) - 1] = '\0';
         printBeacon(pkt);
+      }
+    } else if (magic == PKT_MAGIC_RAW_IMU) {
+      RawImuPacket pkt;
+      memcpy(&pkt, buf, sizeof(pkt));
+      uint16_t expected = crc16((const uint8_t *)&pkt,
+                                sizeof(pkt) - sizeof(pkt.crc));
+      if (expected != pkt.crc) {
+        errPackets++;
+        Serial.println(F("%%E,CRC,R"));
+      } else {
+        rxPackets++;
+        printRawImu(pkt);
       }
     } else {
       errPackets++;
