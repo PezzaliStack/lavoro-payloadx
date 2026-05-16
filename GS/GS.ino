@@ -60,7 +60,18 @@ struct TelemetryPacket {
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+struct BeaconPacket {
+    uint8_t  magic;        // 0x42 'B'
+    uint32_t expCount;
+    float    expValue;
+    char     id[16];
+    uint16_t crc;
+};
+#pragma pack(pop)
+
 static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;
+static const uint8_t PKT_MAGIC_BEACON    = 0x42;
 
 // CRC-16 con polinomio 0x1021, init 0xFFFF (uguale a src/radio.cpp).
 // Calcolato sui byte del pacchetto ESCLUSO il campo crc finale.
@@ -72,6 +83,16 @@ static uint16_t crc16(const uint8_t *buf, size_t len) {
             crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
     }
     return crc;
+}
+
+// Stampa CSV beacon: B,id,count,value
+static void printBeacon(const BeaconPacket &pkt) {
+    Serial.print(F("B,"));
+    Serial.print(pkt.id);
+    Serial.print(',');
+    Serial.print(pkt.expCount);
+    Serial.print(',');
+    Serial.println(pkt.expValue, 3);
 }
 
 // Stampa una riga CSV per il client a valle (es. logger su PC).
@@ -141,24 +162,44 @@ void loop() {
   if (radio.available()) {
     digitalWrite(3, 1);
 
-    // PayloadX: lettura BINARIA. Il vecchio percorso ASCII (Serial.println su
-    // char[32]) e' stato rimosso: il TX ora emette TelemetryPacket binario.
-    TelemetryPacket pkt;
-    radio.read(&pkt, sizeof(pkt));
+    // PayloadX: lettura BINARIA. TX e RX condividono la stessa
+    // setPayloadSize, quindi leggiamo un blocco fisso e dispatchiamo
+    // sul primo byte (magic). Telemetry e Beacon hanno size identica
+    // proprio per coesistere sullo stesso pipe.
+    uint8_t buf[sizeof(TelemetryPacket)];
+    radio.read(buf, sizeof(buf));
+    uint8_t magic = buf[0];
 
-    if (pkt.magic != PKT_MAGIC_TELEMETRY) {
-      errPackets++;
-      Serial.println(F("%%E,MAGIC"));
-    } else {
+    if (magic == PKT_MAGIC_TELEMETRY) {
+      TelemetryPacket pkt;
+      memcpy(&pkt, buf, sizeof(pkt));
       uint16_t expected = crc16((const uint8_t *)&pkt,
                                 sizeof(pkt) - sizeof(pkt.crc));
       if (expected != pkt.crc) {
         errPackets++;
-        Serial.println(F("%%E,CRC"));
+        Serial.println(F("%%E,CRC,T"));
       } else {
         rxPackets++;
         printTelemetry(pkt);
       }
+    } else if (magic == PKT_MAGIC_BEACON) {
+      BeaconPacket pkt;
+      memcpy(&pkt, buf, sizeof(pkt));
+      uint16_t expected = crc16((const uint8_t *)&pkt,
+                                sizeof(pkt) - sizeof(pkt.crc));
+      if (expected != pkt.crc) {
+        errPackets++;
+        Serial.println(F("%%E,CRC,B"));
+      } else {
+        rxPackets++;
+        // Sicurezza: garantiamo terminazione anche se il TX ha mancato
+        // di azzerare l'ultimo byte di id.
+        pkt.id[sizeof(pkt.id) - 1] = '\0';
+        printBeacon(pkt);
+      }
+    } else {
+      errPackets++;
+      Serial.println(F("%%E,MAGIC"));
     }
 
     digitalWrite(3, 0);

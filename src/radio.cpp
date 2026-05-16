@@ -9,12 +9,18 @@
 // di 2 byte e resta < 32.
 
 #include "radio.h"
+#include <string.h>
 #include <SPI.h>
 #include <RF24.h>
 
 #define CE_PIN  7
 #define CSN_PIN 8
 static RF24 radio(CE_PIN, CSN_PIN);
+
+// Byte di magic per i due tipi di pacchetto sullo stesso indirizzo NRF24.
+// La GS dispatcha leggendo il primo byte.
+static const uint8_t PKT_MAGIC_TELEMETRY = 0x54;  // 'T'
+static const uint8_t PKT_MAGIC_BEACON    = 0x42;  // 'B'
 
 #pragma pack(push, 1)
 struct TelemetryPacket {
@@ -33,8 +39,23 @@ struct TelemetryPacket {
 };
 #pragma pack(pop)
 
+// BeaconPacket DEVE avere la stessa dimensione di TelemetryPacket: con
+// setPayloadSize() fixed-size, TX e RX devono leggere/scrivere lo stesso
+// numero di byte sullo stesso pipe. Padding nell'id se serve.
+#pragma pack(push, 1)
+struct BeaconPacket {
+    uint8_t  magic;        // 0x42 'B'
+    uint32_t expCount;     // 4
+    float    expValue;     // 4 (Volt)
+    char     id[16];       // 16, null-padded (callsign / placeholder)
+    uint16_t crc;          // 2
+};
+#pragma pack(pop)
+
 static_assert(sizeof(TelemetryPacket) <= 32,
               "Il pacchetto deve stare nei 32 byte del payload NRF24");
+static_assert(sizeof(BeaconPacket) == sizeof(TelemetryPacket),
+              "Beacon e Telemetry devono avere la stessa size (fixed-payload NRF24)");
 
 static uint16_t seqCounter = 0;
 
@@ -77,7 +98,7 @@ void sendTelemetry(const gpsData &gps, const sensorData &imu, const attitudeData
     (void)imu;  // accel/gyro/mag cruda non e' piu' in pacchetto, ma teniamo
                 // il parametro per estensioni future (es. g-load di backup).
     TelemetryPacket pkt;
-    pkt.magic   = 0x54;
+    pkt.magic   = PKT_MAGIC_TELEMETRY;
     pkt.seq     = seqCounter++;
     pkt.lat_1e7 = (int32_t)(gps.lat * 1e7);
     pkt.lng_1e7 = (int32_t)(gps.lng * 1e7);
@@ -92,5 +113,28 @@ void sendTelemetry(const gpsData &gps, const sensorData &imu, const attitudeData
     bool ok = radio.write(&pkt, sizeof(pkt));
     if (!ok) {
         Serial.println(F("[RADIO] TX fallita (nessun ACK)"));
+    }
+}
+
+// Beacon binario via NRF24.
+// Promemoria: questa trasmissione, su un satellite REALE in volo, richiede
+// licenza radioamatore + coordinazione di frequenza IARU. Finche'
+// payloadBeaconId() restituisce un placeholder ("PAYLOADX-1"), il beacon
+// e' adatto solo a test in laboratorio / banco prova / payload simulato.
+void sendBeaconRadio(const payloadData &pl) {
+    BeaconPacket pkt;
+    memset(&pkt, 0, sizeof(pkt));        // azzera anche il padding di id[]
+    pkt.magic    = PKT_MAGIC_BEACON;
+    pkt.expCount = pl.expCount;
+    pkt.expValue = pl.expValue;
+    // strncpy null-padda l'id se piu' corto del campo; rinforziamo
+    // l'ultimo byte a 0 per garantire stringa C-terminata anche se
+    // l'id raggiunge la dimensione massima.
+    strncpy(pkt.id, payloadBeaconId(), sizeof(pkt.id));
+    pkt.id[sizeof(pkt.id) - 1] = '\0';
+    pkt.crc      = crc16((uint8_t *)&pkt, sizeof(pkt) - sizeof(pkt.crc));
+    bool ok = radio.write(&pkt, sizeof(pkt));
+    if (!ok) {
+        Serial.println(F("[RADIO] beacon TX fallita (nessun ACK)"));
     }
 }

@@ -61,5 +61,8 @@ void loop() {
         Serial.print(F("[BEACON] "));
         Serial.println(beacon);
         (void)len;
+        // Stesso beacon anche via NRF24 con magic 0x42 (la GS distingue
+        // da telemetria 0x54 leggendo il primo byte).
+        sendBeaconRadio(pl);
     }
 }
