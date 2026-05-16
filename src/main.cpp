@@ -13,11 +13,13 @@
 #include "radio.h"
 #include "bms.h"
 #include "payload.h"
+#include "attitude.h"
 
-gpsData     gps;
-sensorData  imu;
-bmsData     bms;
-payloadData pl;
+gpsData      gps;
+sensorData   imu;
+bmsData      bms;
+payloadData  pl;
+attitudeData att;
 
 // Periodi dei task (millisecondi)
 static const uint32_t T_SENSORS   = 200;    // 5 Hz: lettura IMU/GPS
@@ -32,6 +34,7 @@ void setup() {
     initGPS();
     initRadio();
     initPayload();
+    initAttitude();
     Serial.println(F("[SYS] PayloadX avviato"));
 }
 
@@ -41,13 +44,14 @@ void loop() {
     if (now - lastSensors >= T_SENSORS) {
         lastSensors = now;
         readIMUData(imu);
+        updateAttitude(imu, att);
         readGPSData(gps);
         readPayload(pl);
     }
 
     if (now - lastTelem >= T_TELEMETRY) {
         lastTelem = now;
-        sendTelemetry(gps, imu);
+        sendTelemetry(gps, imu, att);
     }
 
     if (now - lastBeacon >= T_BEACON) {

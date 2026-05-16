@@ -50,9 +50,10 @@ struct TelemetryPacket {
     int32_t  lat_1e7;
     int32_t  lng_1e7;
     int32_t  alt_cm;
-    int16_t  ax_mg;
-    int16_t  ay_mg;
-    int16_t  az_mg;
+    int16_t  qw_i16;     // quaternione * 32767
+    int16_t  qx_i16;
+    int16_t  qy_i16;
+    int16_t  qz_i16;
     uint8_t  sats;
     uint8_t  flags;
     uint16_t crc;
@@ -74,7 +75,7 @@ static uint16_t crc16(const uint8_t *buf, size_t len) {
 }
 
 // Stampa una riga CSV per il client a valle (es. logger su PC).
-// Formato: T,seq,lat,lng,alt_m,ax_g,ay_g,az_g,sats,flags_hex
+// Formato: T,seq,lat,lng,alt_m,qw,qx,qy,qz,sats,flags_hex
 static void printTelemetry(const TelemetryPacket &pkt) {
     Serial.print(F("T,"));
     Serial.print(pkt.seq);
@@ -85,11 +86,13 @@ static void printTelemetry(const TelemetryPacket &pkt) {
     Serial.print(',');
     Serial.print(pkt.alt_cm / 100.0f, 2);
     Serial.print(',');
-    Serial.print(pkt.ax_mg / 1000.0f, 3);
+    Serial.print(pkt.qw_i16 / 32767.0f, 4);
     Serial.print(',');
-    Serial.print(pkt.ay_mg / 1000.0f, 3);
+    Serial.print(pkt.qx_i16 / 32767.0f, 4);
     Serial.print(',');
-    Serial.print(pkt.az_mg / 1000.0f, 3);
+    Serial.print(pkt.qy_i16 / 32767.0f, 4);
+    Serial.print(',');
+    Serial.print(pkt.qz_i16 / 32767.0f, 4);
     Serial.print(',');
     Serial.print(pkt.sats);
     Serial.print(',');

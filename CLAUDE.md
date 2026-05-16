@@ -22,8 +22,13 @@ aerospaziale standard).
 - CubeSat.ino (alla root): solo marker documentale, NON compilato da
   PlatformIO (sta fuori da src_dir). Non modificarlo aspettandosi
   effetti sul firmware.
-- MCB/: codice della scheda di controllo principale con filtro Madgwick
-  (assetto), per ora NON integrato nel loop modulare di src/.
+- src/Madgwick.{h,cpp}: copia del filtro Madgwick integrata nel loop
+  modulare. Esposto da src/attitude.{h,cpp}, che fonde gyro+accel+mag
+  e produce il quaternione (qw,qx,qy,qz).
+- MCB/: codice originario della scheda di controllo principale.
+  Madgwick lo abbiamo copiato in src/ (non e' un riferimento simbolico):
+  se Madgwick si tocca, tenere allineate entrambe le copie o decidere
+  che MCB e' deprecato.
 - GS/: ground station (ATmega328PB) — non ancora aggiornata al nuovo
   formato di pacchetto binario.
 
