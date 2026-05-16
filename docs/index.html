@@ -20,13 +20,31 @@
            padding:7px 13px; border-radius:8px; cursor:pointer; }
   button:hover { border-color:var(--acc); }
   input[type=range] { accent-color:var(--acc); }
-  #scene { width:100%; height:430px; border:1px solid var(--line); border-radius:14px;
+  .stage { display:grid; grid-template-columns:1.55fr 1fr; gap:14px; }
+  @media (max-width:760px){ .stage{ grid-template-columns:1fr; } }
+  #scene { width:100%; height:420px; border:1px solid var(--line); border-radius:14px;
            background:#060912; overflow:hidden; position:relative; }
   #hud { position:absolute; top:12px; left:14px; font-family:ui-monospace,monospace;
          font-size:12px; color:var(--muted); line-height:1.7; }
   #tag { position:absolute; top:12px; right:14px; font-family:ui-monospace,monospace;
          font-size:12px; padding:4px 9px; border-radius:8px; background:#10314f;
          color:var(--info); display:none; }
+  .onboard { border:1px solid var(--line); border-radius:14px; overflow:hidden;
+             background:#060912; display:flex; flex-direction:column; }
+  .onboard .obh { font-size:12px; color:var(--muted); padding:9px 12px;
+                  border-bottom:1px solid var(--line); font-family:ui-monospace,monospace; }
+  .obview { position:relative; flex:1; min-height:330px; background:#04060c; }
+  #obimg { width:100%; height:100%; object-fit:cover; display:block;
+           filter:saturate(1.05) contrast(1.03); transition:opacity .4s; }
+  .reticle { position:absolute; inset:0; pointer-events:none; }
+  .reticle::before,.reticle::after{ content:""; position:absolute; background:rgba(224,137,74,.55); }
+  .reticle::before{ left:50%; top:18%; bottom:18%; width:1px; transform:translateX(-.5px); }
+  .reticle::after{ top:50%; left:18%; right:18%; height:1px; transform:translateY(-.5px); }
+  .obc { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px;
+         border:1px solid rgba(224,137,74,.7); border-radius:50%; pointer-events:none; }
+  .obmeta { position:absolute; left:10px; bottom:9px; font-family:ui-monospace,monospace;
+            font-size:11.5px; color:#cdd6e6; background:rgba(6,9,18,.6);
+            padding:3px 7px; border-radius:6px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
           gap:12px; margin-top:14px; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
@@ -39,7 +57,7 @@
   #log { font-family:ui-monospace,monospace; font-size:12.5px; color:var(--muted);
          line-height:2; min-height:84px; }
   footer { text-align:center; font-size:12px; color:var(--muted);
-           padding:20px; border-top:1px solid var(--line); }
+           padding:20px; border-top:1px solid var(--line); line-height:1.7; }
   footer a { color:var(--info); text-decoration:none; }
 </style>
 </head>
@@ -56,13 +74,26 @@
     <span id="spdv" style="font-family:ui-monospace,monospace;font-size:13px;">10×</span>
     <button id="view">Vista dal satellite</button>
   </div>
-  <div id="scene"><div id="hud"></div><div id="tag">IN VISTA DA ROMA</div></div>
+
+  <div class="stage">
+    <div id="scene"><div id="hud"></div><div id="tag">IN VISTA DA ROMA</div></div>
+    <div class="onboard">
+      <div class="obh">VISTA DI BORDO — cosa vede il CubeSat (immagini reali NASA)</div>
+      <div class="obview">
+        <img id="obimg" alt="Immagine satellitare reale della zona sorvolata">
+        <div class="reticle"></div><div class="obc"></div>
+        <div class="obmeta" id="obmeta">—</div>
+      </div>
+    </div>
+  </div>
+
   <div class="grid">
     <div class="card"><div class="k">Latitudine</div><div class="v" id="mLat">—</div></div>
     <div class="card"><div class="k">Longitudine</div><div class="v" id="mLng">—</div></div>
     <div class="card"><div class="k">Quota</div><div class="v" id="mAlt">—</div></div>
     <div class="card"><div class="k">Elevazione da Roma</div><div class="v" id="mEl">—</div></div>
   </div>
+
   <div class="rx">
     <h2>Downlink PayloadX (decodificato a terra)</h2>
     <div id="log"></div>
@@ -70,7 +101,9 @@
 </div>
 <footer>
   PayloadX · fork GPL v3 di EdgeFlyte CubeSat v1 · sviluppato da PezzaliStack —
-  <a href="https://github.com/PezzaliStack/lavoro-payloadx">codice su GitHub</a>
+  <a href="https://github.com/PezzaliStack/lavoro-payloadx">codice su GitHub</a><br>
+  Immagini di bordo: servizi NASA Global Imagery Browse Services (GIBS),
+  parte dell'Earth Science Data and Information System (ESDIS) della NASA.
 </footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -85,8 +118,7 @@
   var sun=new THREE.DirectionalLight(0xffffff,1.1); sun.position.set(7,3,5); sc.add(sun);
   var ER=3.2;
   var earthMat=new THREE.MeshPhongMaterial({color:0x245a96,emissive:0x081a30,shininess:14});
-  var earth=new THREE.Mesh(new THREE.SphereGeometry(ER,64,64),earthMat);
-  sc.add(earth);
+  var earth=new THREE.Mesh(new THREE.SphereGeometry(ER,64,64),earthMat); sc.add(earth);
   var grid=new THREE.Mesh(new THREE.SphereGeometry(ER*1.002,24,18),
     new THREE.MeshBasicMaterial({color:0x3fa07a,wireframe:true,transparent:true,opacity:0.22}));
   sc.add(grid);
@@ -116,7 +148,7 @@
   var roma=new THREE.Mesh(new THREE.SphereGeometry(0.05,16,16),
     new THREE.MeshBasicMaterial({color:0xe0894a}));
   roma.position.copy(geo(41.9,12.5,ER*1.01)); sc.add(roma);
-  var oR=ER*1.066, inc=51.6*Math.PI/180, pts=[];
+  var oR=ER*1.32, inc=51.6*Math.PI/180, pts=[];
   for(var i=0;i<=160;i++){var a=i/160*Math.PI*2;
     pts.push(new THREE.Vector3(Math.cos(a)*oR,Math.sin(a)*oR*Math.sin(inc),Math.sin(a)*oR*Math.cos(inc)));}
   sc.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
@@ -127,6 +159,7 @@
   var pm=new THREE.MeshPhongMaterial({color:0x185fa5,emissive:0x04254a,shininess:60,side:THREE.DoubleSide});
   var a1=new THREE.Mesh(new THREE.BoxGeometry(0.82,0.02,0.36),pm); a1.position.x=-0.6; sat.add(a1);
   var a2=new THREE.Mesh(new THREE.BoxGeometry(0.82,0.02,0.36),pm); a2.position.x=0.6; sat.add(a2);
+  sat.scale.set(0.40,0.40,0.40);
   sc.add(sat);
   var gtMax=240,gtA=new Float32Array(gtMax*3),gtN=0;
   var gtG=new THREE.BufferGeometry(); gtG.setAttribute('position',new THREE.BufferAttribute(gtA,3));
@@ -138,13 +171,52 @@
     sv.push(r*Math.sin(pp)*Math.cos(tt),r*Math.sin(pp)*Math.sin(tt),r*Math.cos(pp));}
   stg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
   sc.add(new THREE.Points(stg,new THREE.PointsMaterial({color:0xffffff,size:0.16,transparent:true,opacity:0.6})));
-  var t=0,play=true,spd=10,fol=false,seq=0,lastB=0,lines=[],lk=-1;
+
+  // ---- Vista di bordo: tile satellitari reali NASA GIBS ----
+  // Endpoint pubblico WMTS/REST usato come XYZ. Data = recente con fallback.
+  var GIBS="https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/";
+  var MSET="/GoogleMapsCompatible_Level9/";
+  var Z=4; // livello di zoom: vista ampia della regione sorvolata
+  function gibsDate(off){ var d=new Date(); d.setUTCDate(d.getUTCDate()-off);
+    return d.toISOString().slice(0,10); }
+  function lonLatToXY(lat,lon,z){
+    var n=Math.pow(2,z);
+    var xt=Math.floor((lon+180)/360*n);
+    var la=lat*Math.PI/180;
+    var yt=Math.floor((1-Math.log(Math.tan(la)+1/Math.cos(la))/Math.PI)/2*n);
+    xt=((xt%n)+n)%n; yt=Math.max(0,Math.min(n-1,yt));
+    return [xt,yt];
+  }
+  var obimg=document.getElementById('obimg'),obmeta=document.getElementById('obmeta');
+  var curKey="",dateOff=1; // parte da "ieri"
+  function setOnboard(lat,lon){
+    if(Math.abs(lat)>83){ obmeta.textContent="regione polare"; return; }
+    var xy=lonLatToXY(lat,lon,Z);
+    var key=xy[0]+"_"+xy[1]+"_"+dateOff;
+    if(key===curKey) return;
+    curKey=key;
+    var url=GIBS+gibsDate(dateOff)+MSET+Z+"/"+xy[1]+"/"+xy[0]+".jpg";
+    var probe=new Image();
+    probe.crossOrigin="anonymous";
+    probe.onload=function(){
+      obimg.style.opacity=0;
+      setTimeout(function(){ obimg.src=url; obimg.style.opacity=1; },120);
+      obmeta.textContent="NASA MODIS "+gibsDate(dateOff)+"  ·  "+lat.toFixed(1)+"°, "+lon.toFixed(1)+"°";
+    };
+    probe.onerror=function(){
+      if(dateOff<6){ dateOff++; curKey=""; setOnboard(lat,lon); } // giorno prima
+    };
+    probe.src=url;
+  }
+
+  var t=0,play=true,spd=10,fol=false,seq=0,lastB=0,lines=[],lk=-1,obTick=-1;
   var hud=document.getElementById('hud'),tag=document.getElementById('tag'),log=document.getElementById('log');
   var mLat=document.getElementById('mLat'),mLng=document.getElementById('mLng'),
       mAlt=document.getElementById('mAlt'),mEl=document.getElementById('mEl');
   document.getElementById('play').onclick=function(){play=!play;this.textContent=play?'⏸ Pausa':'▶ Riprendi';};
   document.getElementById('spd').oninput=function(){spd=+this.value;document.getElementById('spdv').textContent=spd+'×';};
   document.getElementById('view').onclick=function(){fol=!fol;this.textContent=fol?'Vista globale':'Vista dal satellite';};
+
   function loop(){
     if(play){
       t+=0.0014*spd; var a=t;
@@ -166,6 +238,9 @@
       mAlt.textContent=alt+' km';
       mEl.textContent=(el>0?el.toFixed(0)+'°':'—');
       hud.innerHTML='ORBITA tipo ISS<br>incl 51.6° · h≈420 km<br>periodo ~92 min (sim '+spd+'×)';
+      // aggiorna vista di bordo ~ ogni 1.5s di simulazione (non a ogni frame)
+      var ot=Math.floor(t*0.7);
+      if(ot!==obTick){ obTick=ot; setOnboard(lat,lng); }
       var gp=geo(lat,lng+(earth.rotation.y*180/Math.PI),ER*1.012);
       if(gtN<gtMax){gtA.set([gp.x,gp.y,gp.z],gtN*3);gtN++;}
       else{gtA.copyWithin(0,3);gtA.set([gp.x,gp.y,gp.z],(gtMax-1)*3);}
